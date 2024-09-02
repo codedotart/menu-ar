@@ -1,7 +1,10 @@
-<!-- <html>
+<!DOCTYPE html>
+<html lang="en">
   <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AR Experience</title>
+    <title>Flipbook</title>
     <script
       async
       src="https://unpkg.com/es-module-shims@1.7.3/dist/es-module-shims.js"
@@ -12,700 +15,126 @@
         "imports": {
           "three": "https://unpkg.com/three@0.153.0/build/three.module.js",
           "three/addons/": "https://unpkg.com/three@0.153.0/examples/jsm/",
-          "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.3/dist/mindar-image-three.prod.js",
-          "GLTFLoader": "https://unpkg.com/three@0.153.0/examples/jsm/loaders/GLTFLoader.js",
-          "RoomEnvironment": "https://unpkg.com/three@0.153.0/examples/jsm/environments/RoomEnvironment.js",
-          "OrbitControls": "https://unpkg.com/three@0.153.0/examples/jsm/controls/OrbitControls.js"
+          "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js",
+          "CSS3DRenderer": "https://unpkg.com/three@0.153.0/examples/jsm/renderers/CSS3DRenderer.js"
         }
       }
     </script>
-    <script type="module">
-      import * as THREE from "three";
-      import { MindARThree } from "mindar-image-three";
-      import { GLTFLoader } from "GLTFLoader";
-      import { RoomEnvironment } from "RoomEnvironment";
-      import { OrbitControls } from "OrbitControls";
-      import { PMREMGenerator } from "three";
-      import { Raycaster, Vector2 } from "three";
-      import { Clock } from "three";
-
-      const mindarThree = new MindARThree({
-        container: document.querySelector("#container"),
-        filterMinCF: 0.0001, filterBeta: 0.001,
-        imageTargetSrc:
-          "https://cdn.glitch.global/b85578e6-e242-44b6-8e7c-4e5ad0f03fff/targets.mind?v=1688490813246",
-      });
-
-      const raycaster = new Raycaster();
-      const pointer = new Vector2();
-      const clock = new Clock();
-
-      let animationStarted = false;
-      let manager;
-      let pinch, rotate;
-      let modelVisible = false;
-      let planeMesh;
-      let animationStartTime = 0;
-      let animationFinished = false;
-      let trackingStarted = false;
-      let imageTracked = false;
-
-      const { renderer, scene, camera } = mindarThree;
-      const anchor = mindarThree.addAnchor(0);
-      const tloader = new THREE.TextureLoader();
-
-      const texture = tloader.load(
-        "https://cdn.glitch.global/b85578e6-e242-44b6-8e7c-4e5ad0f03fff/IMG_4298.jpg?v=1688570228663",
-        function (texture) {
-          // Once the texture is loaded, create the material
-          const material = new THREE.MeshBasicMaterial({ map: texture });
-          // Create the plane geometry (width = 1, height = 1)
-          const geometry = new THREE.PlaneGeometry(1, 1.5);
-          // Create the mesh
-          console.log("Texture Loaded");
-          planeMesh = new THREE.Mesh(geometry, material);
-          // Add the mesh to the scene
-        }
-      );
-
-
-      // Create a white environment
-      const pmremGenerator = new THREE.PMREMGenerator(renderer);
-      const defaultEnvironment = new RoomEnvironment();
-      const envMap = pmremGenerator.fromScene(defaultEnvironment, 0.04).texture;
-
-      function getPointerPosition(event) {
-        event.preventDefault(); // Prevent the default action
-        pointer.set(
-          (event.clientX / window.innerWidth) * 2 - 1,
-          -(event.clientY / window.innerHeight) * 2 + 1
-        );
-        raycaster.setFromCamera(pointer, camera);
-      }
-
-      let gltf = null; // declare 'gltf' variable outside of any function
-      let meshes = []; // Create a global variable to hold the meshes
-
-      window.addEventListener("pointerdown", getPointerPosition, false);
-
-      const loader = new GLTFLoader();
-      loader.load(
-        "https://cdn.glitch.global/b85578e6-e242-44b6-8e7c-4e5ad0f03fff/elephantv2.glb?v=1688501220526",
-        (loadedGltf) => {
-          gltf = loadedGltf; // Assign loadedGltf to gltf
-          modelVisible = true; // Model has loaded and is visible
-          gltf.scene.traverse((node) => {
-            if (node.isMesh) {
-              node.material.envMap = envMap;
-              meshes.push(node); // Update the meshes variable
-            }
-          });
-
-          // Scale down the model and adjust position
-          gltf.scene.scale.set(0.35, 0.35, 0.35);
-          gltf.scene.position.set(0, -0.6, -1.5);
-
-          // Save the animation mixer and action for later use
-          gltf.userData.mixer = new THREE.AnimationMixer(gltf.scene);
-          if (gltf.animations.length > 0) {
-            gltf.userData.action = gltf.userData.mixer.clipAction(
-              gltf.animations[3]
-            );
-            gltf.userData.action.setLoop(THREE.LoopOnce); // The animation will only play once
-            gltf.userData.action.clampWhenFinished = true; // The animation will not automatically rewind to the beginning when finished
-            gltf.userData.defaultAction = gltf.userData.mixer.clipAction(
-              gltf.animations[27]
-            );
-            gltf.userData.defaultAction.play();
-
-            // Add an event listener to the mixer
-            gltf.userData.mixer.addEventListener("finished", (e) => {
-              console.log("animation finshed");
-              // When the animation is finished, if it's the first animation, play the default action
-              if (e.action === gltf.userData.action) {
-                gltf.userData.defaultAction.reset().play();
-                animationStarted = true; // reset animationStarted to true
-              }
-            });
-          }
-
-          anchor.group.add(gltf.scene);
-          anchor.group.add(planeMesh);
-        },
-        undefined,
-        (error) => {
-          console.error(error);
-        }
-      );
-
-      // hammerjs input helper
-      const hammertime = new Hammer(document.body);
-      hammertime.get("pinch").set({ enable: true });
-      hammertime.get("rotate").set({ enable: true });
-
-      // scale is tricky, because it resets
-      var currentScale = 1;
-      hammertime.on("pinchstart", (ev) => {
-        console.log("Pinch start event triggered");
-        if (!modelVisible || !gltf) return; // Return if the model isn't loaded yet
-        currentScale = gltf.scene.scale.x;
-      });
-
-      hammertime.on("pinchmove", (ev) => {
-        console.log("Pinch move event triggered");
-        if (!modelVisible || !gltf) return; // Return if the model isn't loaded yet
-        let newScale = ev.scale * currentScale;
-        gltf.scene.scale.set(newScale, newScale, newScale);
-      });
-
-      // rotation
-      // pan left/right for rotation
-      let isPanning = false;
-      let swipeVelocity = 0;
-
-      hammertime.on("panleft", () => {
-        if (!modelVisible || !gltf) return;
-        isPanning = true;
-        gltf.scene.rotation.y -= (4 * Math.PI) / 360;
-      });
-
-      hammertime.on("panright", () => {
-        if (!modelVisible || !gltf) return;
-        isPanning = true;
-        gltf.scene.rotation.y += (4 * Math.PI) / 360;
-      });
-
-      hammertime.on("panend", () => {
-        isPanning = false;
-      });
-
-      hammertime.on("pancancel", () => {
-        isPanning = false;
-      });
-
-      hammertime.on("swipeleft", ({ velocity }) => {
-        if (!modelVisible || !gltf) return;
-        swipeVelocity = velocity;
-      });
-
-      hammertime.on("swiperight", ({ velocity }) => {
-        if (!modelVisible || !gltf) return;
-        swipeVelocity = velocity;
-      });
-
-      window.addEventListener("pointerdown", (e) => {
-        raycaster.setFromCamera(pointer, camera);
-        const intersects = raycaster.intersectObject(gltf.scene, true);
-        if (intersects.length > 0) {
-          // If the GLTF scene has animations and the start button has been pressed, play the first animation
-          if (gltf.animations.length > 0 && animationStarted) {
-            gltf.userData.defaultAction.stop(); // stop the default animation
-            gltf.userData.action.reset().play(); // play the first animation
-            animationStarted = false; // reset animationStarted to false
-          }
-        } else {
-          console.log("No intersection");
-        }
-      });
-      
-      anchor.onTargetFound = () => {
-        imageTracked = true;
-        animationStartTime = performance.now();
-        console.log("Tracking");
-      }
-      
-      anchor.onTargetLost = () => {
-        imageTracked = false;
-      }
-
-      const start = async () => {
-        await mindarThree.start();
-        renderer.setAnimationLoop((time) => {
-          // Update the animation mixer
-          if (gltf && gltf.userData.mixer) {
-            gltf.userData.mixer.update(clock.getDelta());
-          }
-
-          // If the tracking has started and the animation is not finished, update the z position of the model
-          if (imageTracked && !animationFinished) {
-            let animationDuration = 6000; // Duration of the animation in milliseconds
-            let elapsedTime = performance.now() - animationStartTime; // Time elapsed since the start of the animation
-
-            if (elapsedTime < animationDuration) {
-              // If the animation is not yet finished, calculate the new z position
-              let newZ = THREE.MathUtils.lerp(
-                -1.5,
-                1.3,
-                elapsedTime / animationDuration
-              );
-              gltf.scene.position.z = newZ;
-            } else {
-              // If the animation is finished, set the z position to the final value and mark the animation as finished
-              gltf.scene.position.z = 1.3;
-              animationFinished = true;
-              gltf.userData.defaultAction.stop();
-              gltf.userData.action.stop();
-              gltf.userData.defaultAction = gltf.userData.mixer.clipAction(
-              gltf.animations[15]);
-              gltf.userData.defaultAction.play();
-            }
-          }
-
-          renderer.render(scene, camera);
-        });
-      };
-
-      const startButton = document.querySelector("#startButton");
-      startButton.addEventListener("click", () => {
-        start();
-        startButton.style.display = "none";
-        animationStarted = true; // set animationStarted to true when the start button is clicked
-        animationStarted = true;
-        trackingStarted = true;
-        
-      });
-    </script>
-    <style>
-      body {
-        margin: 0;
-      }
-      #container {
-        width: 100vw;
-        height: 100vh;
-        position: relative;
-        overflow: hidden;
-      }
-      #startButton {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        z-index: 2;
-        font-size: 20px;
-        padding: 10px;
-      }
-    </style>
+    <link rel="stylesheet" href="style.css" />
+    <script
+      src="https://kit.fontawesome.com/1cad54f882.js"
+      crossorigin="anonymous"
+    ></script>
+    <script src="/script.js" defer></script>
   </head>
   <body>
     <button id="startButton">Start</button>
     <div id="container"></div>
-  </body>
-</html>
- -->
 
+    <input type="checkbox" id="checkbox-cover" />
+    <input type="checkbox" id="checkbox-page1" />
+    <input type="checkbox" id="checkbox-page2" />
+    <input type="checkbox" id="checkbox-page3" />
+    <div class="book">
+      <div class="cover">
+        <label for="checkbox-cover"></label>
+      </div>
+      <div class="page" id="page1">
+        <div class="front-page">
+          <img src="https://www.menuplus.it/menu/img/pag1.jpg" />
+          <label class="next" for="checkbox-page1">
+            <i class="fas fa-chevron-right"></i>
+          </label>
+        </div>
+        <div class="back-page">
+          <img src="https://www.menuplus.it/menu/img/pag2.jpg" />
+          <label class="prev" for="checkbox-page1">
+            <i class="fas fa-chevron-left"></i>
+          </label>
+        </div>
+      </div>
+      <div class="page" id="page2">
+        <div class="front-page">
+          <img src="https://www.menuplus.it/menu/img/pag3.jpg" />
+          <label class="next" for="checkbox-page2">
+            <i class="fas fa-chevron-right"></i>
+          </label>
+        </div>
+        <div class="back-page">
+          <img src="https://www.menuplus.it/menu/img/pag4.jpg" />
+          <label class="prev" for="checkbox-page2">
+            <i class="fas fa-chevron-left"></i>
+          </label>
+        </div>
+      </div>
+      <div class="page" id="page3">
+        <div class="front-page">
+          <img src="https://www.menuplus.it/menu/img/pag5.jpg" />
+          <label class="next" for="checkbox-page3">
+            <i class="fas fa-chevron-right"></i>
+          </label>
+        </div>
+      </div>
+      <div class="page"></div>
+      <div class="back-cover"></div>
+    </div>
+    <script type="module">
+      import * as THREE from "three";
+      import { MindARThree } from "mindar-image-three";
+      import { CSS3DRenderer, CSS3DObject } from "CSS3DRenderer";
 
-
-
-
-
-
-<!-- 
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AR Experience</title>
-  <script async src="https://unpkg.com/es-module-shims@1.7.3/dist/es-module-shims.js"></script>
-  <script src="https://hammerjs.github.io/dist/hammer.min.js"></script>
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://unpkg.com/three@0.153.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.153.0/examples/jsm/",
-        "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.3/dist/mindar-image-three.prod.js"
-      }
-    }
-  </script>
-  <script type="module">
-    import * as THREE from "three";
-    import { MindARThree } from "mindar-image-three";
-
-    const mindarThree = new MindARThree({
-      container: document.querySelector("#container"),
-      // Smoothing controls
-      filterMinCF: 0.0001, filterBeta: 0.001,
-      // Location of the tracked image file compiled to .mind file
-      imageTargetSrc: "https://cdn.glitch.global/b85578e6-e242-44b6-8e7c-4e5ad0f03fff/targets.mind?v=1688490813246",
-    });
-
-    const { renderer, scene, camera } = mindarThree;
-    const anchor = mindarThree.addAnchor(0);
-
-    let planeMesh;
-
-    const tloader = new THREE.TextureLoader();
-    tloader.load(
-      // This is URL of the image to be overlaid on the tracked image in AR
-      "https://cdn.glitch.global/b85578e6-e242-44b6-8e7c-4e5ad0f03fff/IMG_4298.jpg?v=1688570228663",
-      function (texture) {
-        const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
-        // Here we define a 2D plane with width and height. Keeping width=1 to keep the same width between tracked image and overlay image
-        const geometry = new THREE.PlaneGeometry(1, 1.5);
-        planeMesh = new THREE.Mesh(geometry, material);
-        planeMesh.visible = false;
-        anchor.group.add(planeMesh);
-        console.log("Texture Loaded");
-      }
-    );
-    // Event when the tracked image target is found
-    anchor.onTargetFound = () => {
-      planeMesh.visible = true;
-      console.log("Target found - showing texture");
-    };
-    // Event when the tracked image target is lost
-    anchor.onTargetLost = () => {
-      planeMesh.visible = false;
-      console.log("Target lost - hiding texture");
-    };
-
-    const start = async () => {
-      await mindarThree.start();
-      renderer.setAnimationLoop(() => {
-        renderer.render(scene, camera);
+      const mindarThree = new MindARThree({
+        container: document.querySelector("#container"),
+        filterMinCF: 0.0001,
+        filterBeta: 0.001,
+        imageTargetSrc:
+          "https://cdn.glitch.global/dddc0cb3-4393-44ea-af16-5be8bfe2cdca/targets-menuv2.mind?v=1725302288678",
       });
-    };
 
-    const container = document.querySelector("#container");
-    const hammertime = new Hammer(container);
-    hammertime.get("pinch").set({ enable: true });
-    hammertime.get("rotate").set({ enable: true });
+      const { cssRenderer, scene, camera } = mindarThree;
+      const anchor = mindarThree.addAnchor(0);
 
-    let currentScale = 1;
-    let isPanning = false;
-    let modelVisible = true; // Assuming the model is visible
+      // Get the flipbook element
+      const flipbookElement = document.querySelector(".book");
 
-    hammertime.on("pinchstart", (ev) => {
-      console.log("Pinch start event triggered");
-      if (!modelVisible || !planeMesh) return; // Return if the model isn't loaded yet
-      currentScale = planeMesh.scale.x;
-    });
+      // Create a CSS3DObject
+      const cssObject = new CSS3DObject(flipbookElement);
+      cssObject.position.set(0.25, 0.1, 0);
+      cssObject.scale.set(0.0025, 0.0025, 0.0025);
+      cssObject.rotation.y = 0;
+      anchor.group.add(cssObject);
 
-    hammertime.on("pinchmove", (ev) => {
-      console.log("Pinch move event triggered");
-      if (!modelVisible || !planeMesh) return; // Return if the model isn't loaded yet
-      let newScale = ev.scale * currentScale;
-      planeMesh.scale.set(newScale, newScale, newScale);
-    });
+      // Ensure the book is visible when AR starts
+      const start = async () => {
+        await mindarThree.start();
+        console.log("AR experience started");
+        // updateVisibility(true);
+        animate();
+      };
 
-    hammertime.on("panleft", () => {
-      if (!modelVisible || !planeMesh) return;
-      isPanning = true;
-      planeMesh.rotation.y -= (4 * Math.PI) / 360;
-    });
-
-    hammertime.on("panright", () => {
-      if (!modelVisible || !planeMesh) return;
-      isPanning = true;
-      planeMesh.rotation.y += (4 * Math.PI) / 360;
-    });
-
-    hammertime.on("panup", () => {
-      if (!modelVisible || !planeMesh) return;
-      isPanning = true;
-      planeMesh.rotation.x -= (4 * Math.PI) / 360;
-    });
-
-    hammertime.on("pandown", () => {
-      if (!modelVisible || !planeMesh) return;
-      isPanning = true;
-      planeMesh.rotation.x += (4 * Math.PI) / 360;
-    });
-
-    hammertime.on("pancancel", () => {
-      isPanning = false;
-    });
-
-    // Start the AR experience on load
-    window.addEventListener("load", start);
-  </script>
-  <style>
-    body {
-      margin: 0;
-    }
-    #container {
-      width: 100vw;
-      height: 100vh;
-      position: relative;
-      overflow: hidden;
-    }
-  </style>
-</head>
-<body>
-  <div id="container"></div>
-</body>
-</html>
- -->
-
-
-
-
-
-
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Menu AR Experience</title>
-    <script async src="https://unpkg.com/es-module-shims@1.7.3/dist/es-module-shims.js"></script>
-    <script src="https://hammerjs.github.io/dist/hammer.min.js"></script>
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "https://unpkg.com/three@0.153.0/build/three.module.js",
-          "three/addons/": "https://unpkg.com/three@0.153.0/examples/jsm/",
-          "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.3/dist/mindar-image-three.prod.js",
-          "OrbitControls": "https://unpkg.com/three@0.153.0/examples/jsm/controls/OrbitControls.js"
-        }
-      }
-    </script>
-    <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-        }
-        #startButton {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 2;
-            font-size: 20px;
-            padding: 10px;
-        }
-        .image-container {
-            width: 900px;
-            height: auto;
-            background-color: white;
-            border: 1px solid #ccc;
-            font-family: Arial, sans-serif;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: none;
-        }
-        .image-container img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .arrow-button {
-            position: absolute;
-            top: 50%;
-            z-index: 100;
-            padding: 10px;
-            background-color: rgba(0, 0, 0, 0.5);
-            color: white;
-            border: none;
-            cursor: pointer;
-            font-size: 24px;
-            transform: translateY(-50%);
-            display: none;
-        }
-        .arrow-left {
-            left: 20px;
-        }
-        .arrow-right {
-            right: 20px;
-        }
-        .pagination {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 100;
-            display: flex;
-            gap: 10px;
-            display: none;
-        }
-        .pagination span {
-            width: 12px;
-            height: 12px;
-            background-color: #ddd;
-            border-radius: 50%;
-            cursor: pointer;
-        }
-        .pagination .active {
-            background-color: #333;
-        }
-        #container {
-            width: 100vw;
-            height: 100vh;
-            position: relative;
-            overflow: hidden;
-        }
-    </style>
-</head>
-<body>
-  <button id="startButton">Start</button>
-  <div id="container"></div>
-
-  <button id="leftArrow" class="arrow-button arrow-left">&#10094;</button>
-  <button id="rightArrow" class="arrow-button arrow-right">&#10095;</button>
-  <div id="pagination" class="pagination"></div>
-
-  <script type="module">
-    import * as THREE from "three";
-    import { MindARThree } from "mindar-image-three";
-    import {
-        CSS3DRenderer,
-        CSS3DObject,
-    } from "three/addons/renderers/CSS3DRenderer.js";
-    import { OrbitControls } from "OrbitControls";
-
-    const mindarThree = new MindARThree({
-      container: document.querySelector("#container"),
-      filterMinCF: 0.0001, filterBeta: 0.001,
-      imageTargetSrc: "https://cdn.glitch.global/9008090b-933e-4448-9a37-eee562e7814a/targets-menu-ar.mind?v=1724854256804",
-    });
-
-    const { renderer, scene, camera } = mindarThree;
-    const anchor = mindarThree.addAnchor(0);
-
-    const images = [
-      "https://cdn.glitch.global/ce761b81-a5bd-4634-a29e-e07d949aacf1/pag1.jpg?v=1724844666538",
-      "https://cdn.glitch.global/ce761b81-a5bd-4634-a29e-e07d949aacf1/pag2.jpg?v=1724844674623",
-      "https://cdn.glitch.global/ce761b81-a5bd-4634-a29e-e07d949aacf1/pag3.jpg?v=1724844673168",
-      "https://cdn.glitch.global/ce761b81-a5bd-4634-a29e-e07d949aacf1/pag4.jpg?v=1724844671805",
-      "https://cdn.glitch.global/ce761b81-a5bd-4634-a29e-e07d949aacf1/pag5.jpg?v=1724844670190",
-      "https://cdn.glitch.global/ce761b81-a5bd-4634-a29e-e07d949aacf1/pag6.jpg?v=1724844668558"
-    ];
-    let currentIndex = 0;
-    let planeMesh;
-    const tloader = new THREE.TextureLoader();
-
-    // Function to set the current image as the texture on the plane
-    function setARTexture(imageIndex) {
-        const texture = tloader.load(images[imageIndex]);
-        if (planeMesh) {
-            planeMesh.material.map = texture;
-            planeMesh.material.needsUpdate = true;
-        }
-    }
-
-    // Create the plane mesh for the AR texture
-    const geometry = new THREE.PlaneGeometry(1, 1.5);
-    const material = new THREE.MeshBasicMaterial({ map: null, transparent: true, side: THREE.DoubleSide });
-    planeMesh = new THREE.Mesh(geometry, material);
-    planeMesh.visible = false;
-    anchor.group.add(planeMesh);
-
-    anchor.onTargetFound = () => {
-      planeMesh.visible = true;
-      setARTexture(currentIndex);
-      document.querySelector('#leftArrow').style.display = 'block';
-      document.querySelector('#rightArrow').style.display = 'block';
-      document.querySelector('.pagination').style.display = 'flex';
-      console.log("Target found - showing AR texture and controls");
-    };
-
-    anchor.onTargetLost = () => {
-      planeMesh.visible = false;
-      document.querySelector('#leftArrow').style.display = 'none';
-      document.querySelector('#rightArrow').style.display = 'none';
-      document.querySelector('.pagination').style.display = 'none';
-      console.log("Target lost - hiding AR texture and controls");
-    };
-
-    const start = async () => {
-      await mindarThree.start();
-      renderer.setAnimationLoop(() => {
-        renderer.render(scene, camera);
-      });
-    };
-
-    const startButton = document.querySelector("#startButton");
-    startButton.addEventListener("click", () => {
-      start();
-      startButton.style.display = "none";
-      animationStarted = true; // set animationStarted to true when the start button is clicked
-      animationStarted = true;
-      trackingStarted = true;
-    });
-
-    // 3D Image Slider Setup
-    const cssScene = new THREE.Scene();
-    const cssCamera = new THREE.PerspectiveCamera(
-        75,
-        window.innerWidth / window.innerHeight,
-        0.1,
-        1000
-    );
-    const cssRenderer = new CSS3DRenderer();
-    cssRenderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(cssRenderer.domElement);
-
-    const controls = new OrbitControls(cssCamera, cssRenderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.screenSpacePanning = false;
-    controls.maxPolarAngle = Math.PI / 2;
-
-    const imageContainer = document.createElement("div");
-    imageContainer.className = "image-container";
-    document.body.appendChild(imageContainer);
-
-    function setImage(src) {
-        imageContainer.innerHTML = "";
-        const img = document.createElement("img");
-        img.src = src;
-        imageContainer.appendChild(img);
-    }
-
-    const imageObject = new CSS3DObject(imageContainer);
-    cssScene.add(imageObject);
-    imageObject.position.set(0, 0, 0);
-    cssCamera.position.set(0, 0, 1000);
-
-    function updateImage() {
-        setImage(images[currentIndex]);
-        setARTexture(currentIndex); // Update AR texture when the image is changed
-        updatePagination();
-    }
-
-    document.getElementById('leftArrow').addEventListener('click', () => {
-        currentIndex = (currentIndex - 1 + images.length) % images.length;
-        updateImage();
-    });
-
-    document.getElementById('rightArrow').addEventListener('click', () => {
-        currentIndex = (currentIndex + 1) % images.length;
-        updateImage();
-    });
-
-    const pagination = document.getElementById('pagination');
-    images.forEach((_, i) => {
-        const dot = document.createElement('span');
-        dot.addEventListener('click', () => {
-            currentIndex = i;
-            updateImage();
-        });
-        pagination.appendChild(dot);
-    });
-
-    function updatePagination() {
-        Array.from(pagination.children).forEach((dot, i) => {
-            dot.classList.toggle('active', i === currentIndex);
-        });
-    }
-
-    updateImage();
-
-    function animate() {
+      function animate() {
         requestAnimationFrame(animate);
-        controls.update();
-        cssRenderer.render(cssScene, cssCamera);
-    }
-    animate();
 
-    // Handle window resize
-    window.addEventListener("resize", () => {
-        cssCamera.aspect = window.innerWidth / window.innerHeight;
-        cssCamera.updateProjectionMatrix();
+        // Render the css content
+        cssRenderer.render(scene, camera);
+      }
+
+      const startButton = document.querySelector("#startButton");
+      startButton.addEventListener("click", () => {
+        
+        start();
+        
+        startButton.style.display = "none";
+        document.querySelector('.book').style.visibility = 'visible';
+        //document.querySelector('.book').style.visibility = 'visible';
+      });
+
+      // Handle window resize
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
         cssRenderer.setSize(window.innerWidth, window.innerHeight);
-    });
-  </script>
-</body>
+      });
+    </script>
+  </body>
 </html>
